@@ -1,1 +1,192 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="utf-8">
+    <title>Seattle Emergency Services</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <script src="https://unpkg.com/maplibre-gl@^5.9.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@^5.9.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
 
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #side-panel {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 400px;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.9);
+            overflow-y: scroll;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        @media (max-width: 1024px) {
+            #side-panel {
+                display: none;
+            }
+        }
+
+        button {
+            margin-bottom: 10px;
+            margin-right: 10px;
+        }
+
+        table {
+            border-collapse: collapse;
+            border-spacing: 0;
+            width: 100%;
+            border: 1px solid #ddd;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 12px;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="side-panel">
+        <h2>Seattle Emergency Services</h2>
+        <button class="sort">Sort by Name</button>
+        <button class="toggle">Toggle Fire/Hospital</button>
+        <table>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Address</th>
+            </tr>
+        </table>
+    </div>
+
+    <script>
+        const map = new maplibregl.Map({
+            container: 'map',
+            center: [-122.335167, 47.608013],
+            zoom: 11,
+            style: 'https://demotiles.maplibre.org/style.json'
+        });
+
+        let fireStations = {}, hospitals = {};
+        let currentView = 'fire';
+
+        async function geojsonFetch() {
+            const fireRes = await fetch('assets/fire-stations.geojson');
+            fireStations = await fireRes.json();
+
+            const hospRes = await fetch('assets/hospitals.geojson');
+            hospitals = await hospRes.json();
+
+            map.addSource('fireStations', { type: 'geojson', data: fireStations });
+            map.addLayer({
+                id: 'fireStations-layer',
+                type: 'circle',
+                source: 'fireStations',
+                paint: {
+                    'circle-radius': 6,
+                    'circle-color': '#e63946',
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#fff'
+                }
+            });
+
+            map.addSource('hospitals', { type: 'geojson', data: hospitals });
+            map.addLayer({
+                id: 'hospitals-layer',
+                type: 'circle',
+                source: 'hospitals',
+                paint: {
+                    'circle-radius': 6,
+                    'circle-color': '#457b9d',
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#fff'
+                }
+            });
+
+            toggleLayers(currentView);
+            populateTable(currentView);
+        }
+
+        function toggleLayers(view) {
+            map.setLayoutProperty('fireStations-layer', 'visibility', view === 'fire' ? 'visible' : 'none');
+            map.setLayoutProperty('hospitals-layer', 'visibility', view === 'hospital' ? 'visible' : 'none');
+        }
+
+        function populateTable(type) {
+            const table = document.querySelector("table");
+            table.innerHTML = `
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Address</th>
+                </tr>
+            `;
+
+            const data = type === 'fire' ? fireStations.features : hospitals.features;
+
+            data.forEach(item => {
+                const row = table.insertRow(-1);
+                const cell1 = row.insertCell(0);
+                const cell2 = row.insertCell(1);
+                const cell3 = row.insertCell(2);
+
+                if (type === 'fire') {
+                    cell1.innerHTML = item.properties.STNID || 'N/A';
+                    cell2.innerHTML = 'Fire Station';
+                } else {
+                    cell1.innerHTML = item.properties.FACILITY || 'N/A';
+                    cell2.innerHTML = 'Hospital';
+                }
+                cell3.innerHTML = item.properties.ADDRESS || 'N/A';
+            });
+        }
+
+        function sortTable() {
+            const table = document.querySelector("table");
+            let switching = true;
+
+            while (switching) {
+                switching = false;
+                const rows = table.rows;
+                for (let i = 1; i < rows.length - 1; i++) {
+                    let x = rows[i].cells[0].innerText.toLowerCase();
+                    let y = rows[i + 1].cells[0].innerText.toLowerCase();
+                    if (x > y) {
+                        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                        switching = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        map.on('load', () => {
+            geojsonFetch();
+        });
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.querySelector("button.sort").addEventListener("click", sortTable);
+            document.querySelector("button.toggle").addEventListener("click", () => {
+                currentView = currentView === 'fire' ? 'hospital' : 'fire';
+                toggleLayers(currentView);
+                populateTable(currentView);
+            });
+        });
+    </script>
+</body>
+</html>
